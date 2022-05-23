@@ -1,0 +1,7 @@
+TAGS
+*.lock
+.stack-work/
+*.db
+*.html
+*.txt
+.envrc
