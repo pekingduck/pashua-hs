@@ -1,5 +1,7 @@
 {-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -19,6 +21,7 @@ module Pashua
   , defaultButton
   , defaultWindow
   , defaultCancelButton
+  , defaultCheckbox
   , defaultCombobox
   , defaultRadioButton
   , defaultPopup
@@ -28,25 +31,32 @@ module Pashua
   , defaultTextField
   , defaultPassword
   , defaultDate
+  , defaultImage
+  , defaultText_
+  , defaultTextBox
   , serialize
   , runForm
   , mkListWithDefault
+  , parseResult
   ) where
 
 import           Data.Functor          ((<&>))
+import           Data.List             (find)
 import qualified Data.List.NonEmpty    as NL
-import           Data.String           (IsString)
-import           Data.Text             (Text, intercalate, pack)
+import           Data.Text             (Text, breakOn, null, tail, unwords)
 import           Formatting            (sformat, (%))
-import           Formatting.Formatters (float, int, stext, string)
+import           Formatting.Formatters (int, stext, string)
+import           Prelude               hiding (null, tail, unwords)
 
-type ID = String
+
+type ID = Text
 
 type Attribute = Text
 
 type Coord = (Int, Int)
 
 data ListWithDefault = ListWithDefault (Maybe Text) (NL.NonEmpty Text)
+  deriving Show
 
 data FontSize = Regular | Small | Mini
 
@@ -72,7 +82,7 @@ instance Show Completion where
   show CaseSensitive   = "1"
   show CaseInsensitive = "2"
 
-data FileType = Directory | Extensions (NL.NonEmpty Text)
+data FileType = Directory | Extensions (NL.NonEmpty Text) deriving Show
 
 data DateStyle = Textual | Graphical
 
@@ -80,13 +90,12 @@ instance Show DateStyle where
   show Textual   = "1"
   show Graphical = "0"
 
-data DateChoice = DateOnly | TimeOnly | DateTime
+data DateChoice = DateOnly | TimeOnly | DateTime deriving Show
 
-class Serializable a where
-  serialize :: a -> [[Text]]
+class Serializable w where
+  serialize :: w -> [[Text]]
 
--- Window is not in Widget because it would be difficult to assign an ID to it
--- for any a, and that ID would have to be shown as "*"
+-- Window is not a Widget because it doesn't need an ID
 data Window = Window { appearance    :: Maybe WindowAppearance
                      , autoCloseTime :: Maybe Int
                      , autoSaveKey   :: Maybe Text
@@ -96,6 +105,8 @@ data Window = Window { appearance    :: Maybe WindowAppearance
                      , xy            :: Maybe Coord
                      }
 
+-- id_ is needed only for keying into the final results returned by pashua
+-- the real ids being passed to pashua are auto-generated ("widget0", "widget1"..)
 data Widget a =
   Button
   { id_      :: a
@@ -215,12 +226,10 @@ data Widget a =
   , tooltip  :: Maybe Text
   , xy       :: Maybe Coord
   } |
-  Image |
-  Text_ |
-  TextBox
-
-
-
+  Image { id_ :: a }|
+  Text_ { id_ :: a }|
+  TextBox { id_ :: a }
+  deriving (Functor, Show) -- Functor because we need Widget Text for serialization
 
 data Form a = Form (Maybe Window) [Widget a]
 
@@ -228,30 +237,25 @@ boolToInt :: Bool -> Int
 boolToInt True  = 1
 boolToInt False = 0
 
-maybe' = maybe []
-
 coordFmt :: ID -> (Attribute, Attribute) -> Maybe Coord -> [Text]
 coordFmt wid (x, y)= maybe [] $ \(a, b) ->
-              [ sformat (string % "." % stext % "=" % int) wid x a
-              , sformat (string % "." % stext % "=" % int) wid y b
+              [ sformat (stext % "." % stext % "=" % int) wid x a
+              , sformat (stext % "." % stext % "=" % int) wid y b
               ]
 
 textFmt :: ID -> Attribute -> Maybe Text -> [Text]
 textFmt wid attr = maybe [] $ \a ->
-                     [ sformat (string % "." % stext % "=" % stext)
+                     [ sformat (stext % "." % stext % "=" % stext)
                        wid attr a ]
 
 showFmt :: Show a => ID -> Attribute -> Maybe a -> [Text]
-showFmt wid attr = maybe [] $ \a ->
-                                [ sformat (string % "." % stext % "=" % string)
-                                  wid attr (show a) ]
-
-labelFmt :: ID -> Text -> [Text]
-labelFmt wid label = [ sformat (string % ".label=" % stext) wid label]
-
+showFmt wid attr =
+  maybe [] $ \a ->
+               [ sformat (stext % "." % stext % "=" % string)
+                 wid attr (show a) ]
 
 instance Serializable Window where
-  serialize (Window {..}) =
+  serialize Window {..} =
     [ showFmt "*" "appearance" appearance
     , showFmt "*" "autoclosetime" autoCloseTime
     , textFmt "*" "autosavekey" autoSaveKey
@@ -261,153 +265,150 @@ instance Serializable Window where
     , coordFmt "*" ("x", "y") xy
     ]
 
-instance Show a => Serializable (Widget a) where
-  serialize (Button {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "button")
-      , labelFmt widgetID label
-      , coordFmt widgetID ("x", "y") xy
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      ]
-  serialize (CancelButton {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "cancelbutton")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      ]
-  serialize (Checkbox {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "checkbox")
-      , labelFmt widgetID label
-      , showFmt widgetID "default" (boolToInt <$> checked)
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ]
-  serialize (Combobox {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "combobox")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "width" width
-      , showFmt widgetID "rows" rows
-      , textFmt widgetID "placeholder" placeholder
-      , showFmt widgetID "completion" completion
-      , showFmt widgetID "mandatory" mandatory
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ] <> NL.toList (options <&> textFmt widgetID "option" . Just)
-  serialize (RadioButton {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "radiobutton")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "mandatory" mandatory
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ] <> let ListWithDefault def opts = options_ in
-             NL.toList (opts <&> textFmt widgetID "option" . Just) <>
-             flip (maybe []) def \x -> [ textFmt widgetID "default" (Just x) ]
-  serialize (Popup {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "popup")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "mandatory" mandatory
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ] <> let ListWithDefault def opts = options_ in
-             NL.toList (opts <&> textFmt widgetID "option" . Just) <>
-             flip (maybe []) def \x -> [ textFmt widgetID "default" (Just x) ]
-  serialize (OpenBrowser {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "openbrowser")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "width" width
-      , textFmt widgetID "default" defaultPath
-      , showFmt widgetID "mandatory" mandatory
-      , textFmt widgetID "placeholder" placeholder
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ] <> flip (maybe []) fileType \case
-      Directory -> [ textFmt widgetID "filetype" (Just "directory") ]
-      Extensions es ->
-        [ textFmt widgetID "filetype" ((Just . intercalate " " . NL.toList) es) ]
-  serialize (SaveBrowser {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "openbrowser")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "width" width
-      , textFmt widgetID "filetype" fileExtension
-      , textFmt widgetID "default" defaultPath
-      , showFmt widgetID "mandatory" mandatory
-      , textFmt widgetID "placeholder" placeholder
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ]
-  serialize (DefaultButton {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "defaultbutton")
-      , textFmt widgetID "label" label_
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      ]
-  serialize (TextField {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "textfield")
-      , textFmt widgetID "label" label_
-      , textFmt widgetID "default" default_
-      , showFmt widgetID "width" width
-      , textFmt widgetID "placeholder" placeholder
-      , showFmt widgetID "mandatory" mandatory
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ]
-  serialize (Password {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "password")
-      , textFmt widgetID "label" label_
-      , textFmt widgetID "default" default_
-      , showFmt widgetID "width" width
-      , showFmt widgetID "mandatory" mandatory
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , coordFmt widgetID ("relx", "rely") relXY
-      ]
-  serialize (Date {..}) =
-    let widgetID = show id_ in
-      [ textFmt widgetID "type" (Just "date")
-      , textFmt widgetID "label" label_
-      , textFmt widgetID "default" default_
-      , showFmt widgetID "disabled" (boolToInt <$> disabled)
-      , textFmt widgetID "tooltip" tooltip
-      , coordFmt widgetID ("x", "y") xy
-      , showFmt widgetID "textual" style
-      ] <> flip (maybe []) choice
-      \x ->
-        let (date, time) = case x of
-              DateOnly -> (1, 0)
-              TimeOnly -> (0, 1)
-              DateTime -> (1, 1)
-        in [ showFmt widgetID "date" (Just date)
-           , showFmt widgetID "time" (Just time)
-           ]
+-- Only Widget Text is allowed to be serializable since
+-- serialize will fmap Widget a to Widget Text anyway
+instance Serializable (Widget Text) where
+  serialize Button {..} =
+    [ textFmt id_ "type" (Just "button")
+    , textFmt id_ "label" (Just label)
+    , coordFmt id_ ("x", "y") xy
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    ]
+  serialize CancelButton {..} =
+    [ textFmt id_ "type" (Just "cancelbutton")
+    , textFmt id_ "label" label_
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    ]
+  serialize Checkbox {..} =
+    [ textFmt id_ "type" (Just "checkbox")
+    , textFmt id_ "label" (Just label)
+    , showFmt id_ "default" (boolToInt <$> checked)
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ]
+  serialize Combobox {..} =
+    [ textFmt id_ "type" (Just "combobox")
+    , textFmt id_ "label" label_
+    , showFmt id_ "width" width
+    , showFmt id_ "rows" rows
+    , textFmt id_ "placeholder" placeholder
+    , showFmt id_ "completion" completion
+    , showFmt id_ "mandatory" mandatory
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ] <> NL.toList (options <&> textFmt id_ "option" . Just)
+  serialize RadioButton {..} =
+    [ textFmt id_ "type" (Just "radiobutton")
+    , textFmt id_ "label" label_
+    , showFmt id_ "mandatory" mandatory
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ] <> let ListWithDefault def opts = options_ in
+           NL.toList (opts <&> textFmt id_ "option" . Just) <>
+           flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
+  serialize Popup {..} =
+    [ textFmt id_ "type" (Just "popup")
+    , textFmt id_ "label" label_
+    , showFmt id_ "mandatory" mandatory
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ] <> let ListWithDefault def opts = options_ in
+           NL.toList (opts <&> textFmt id_ "option" . Just) <>
+           flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
+  serialize OpenBrowser {..} =
+    [ textFmt id_ "type" (Just "openbrowser")
+    , textFmt id_ "label" label_
+    , showFmt id_ "width" width
+    , textFmt id_ "default" defaultPath
+    , showFmt id_ "mandatory" mandatory
+    , textFmt id_ "placeholder" placeholder
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ] <> flip (maybe []) fileType \case
+    Directory -> [ textFmt id_ "filetype" (Just "directory") ]
+    Extensions es ->
+      [ textFmt id_ "filetype" ((Just . unwords . NL.toList) es) ]
+  serialize SaveBrowser {..} =
+    [ textFmt id_ "type" (Just "openbrowser")
+    , textFmt id_ "label" label_
+    , showFmt id_ "width" width
+    , textFmt id_ "filetype" fileExtension
+    , textFmt id_ "default" defaultPath
+    , showFmt id_ "mandatory" mandatory
+    , textFmt id_ "placeholder" placeholder
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ]
+  serialize DefaultButton {..} =
+    [ textFmt id_ "type" (Just "defaultbutton")
+    , textFmt id_ "label" label_
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    ]
+  serialize TextField {..} =
+    [ textFmt id_ "type" (Just "textfield")
+    , textFmt id_ "label" label_
+    , textFmt id_ "default" default_
+    , showFmt id_ "width" width
+    , textFmt id_ "placeholder" placeholder
+    , showFmt id_ "mandatory" mandatory
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ]
+  serialize Password {..} =
+    [ textFmt id_ "type" (Just "password")
+    , textFmt id_ "label" label_
+    , textFmt id_ "default" default_
+    , showFmt id_ "width" width
+    , showFmt id_ "mandatory" mandatory
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ]
+  serialize Date {..} =
+    [ textFmt id_ "type" (Just "date")
+    , textFmt id_ "label" label_
+    , textFmt id_ "default" default_
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , showFmt id_ "textual" style
+    ] <> flip (maybe []) choice
+    \x ->
+      let (date, time) = case x of
+            DateOnly -> (1, 0) :: (Int, Int)
+            TimeOnly -> (0, 1)
+            DateTime -> (1, 1)
+      in [ showFmt id_ "date" (Just date)
+         , showFmt id_ "time" (Just time)
+         ]
   -- TODO: image, text, textbox
   serialize _ = []
 
+mkWidgetID :: Int -> a -> Text
+mkWidgetID i _  = sformat ("widget" % int) i
 
-instance Show a => Serializable (Form a) where
+fmapWidget :: (a -> b) -> Widget a -> Widget b
+fmapWidget f widget = widget { id_ = f (id_ widget) }
+
+instance Serializable (Form a) where
   serialize (Form w' widgets) =
-    maybe [] serialize w' <> mconcat (fmap serialize widgets)
+    maybe [] serialize w' <> mconcat (fmap serialize widgets')
+    where
+      widgets' = zip [0..] widgets <&> \(i, w) -> fmapWidget (mkWidgetID i) w
 
 defaultWindow :: Window
 defaultWindow =
@@ -495,7 +496,6 @@ defaultPopup id_ optionList =
   , relXY = Nothing
   }
 
-
 defaultOpenBrowser :: a -> Widget a
 defaultOpenBrowser id_ =
   OpenBrowser
@@ -575,8 +575,34 @@ defaultDate id_ =
   , xy       = Nothing
   }
 
-runForm :: Show a => Form a -> [Text]
+defaultImage :: a -> Widget a
+defaultImage id_ =
+  Image { id_ = id_ }
+
+defaultText_ :: a -> Widget a
+defaultText_ id_ =
+  Text_ { id_ = id_ }
+
+defaultTextBox :: a -> Widget a
+defaultTextBox id_ =
+  TextBox { id_ = id_ }
+
+runForm :: Form a -> [Text]
 runForm = mconcat . serialize
+
+parseResult :: Eq a => Form a -> [Text] -> [(a, Text)]
+parseResult (Form _ widgets) inputLines =
+  -- lookupTable [ ("widget0", id0), ("widget1", id1), ...]
+  let lookupTable = zip [0..] widgets <&> \(i, w) -> (mkWidgetID i id_, id_ w)
+  in inputLines <&> \line ->
+    let (widgetID', value) = split line
+    in
+      case find (\(widgetID, _) -> widgetID' == widgetID) lookupTable of
+        Nothing     -> error $ "Widget ID " <> show widgetID' <> " not found!"
+        Just (_, a) -> (a, value)
+  where
+    -- Splits line (e.g. "a=b") by "=", return ("a", "b")
+    split l = let (k, v) = breakOn "=" l in (k, if null v then "" else tail v)
 
 -- Smart constructor
 -- default_ must be in items if it's not Nothing
