@@ -1,6 +1,8 @@
+{-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE OverloadedStrings     #-}
+
 module Main where
 
 import           Control.Monad      (forM_)
@@ -9,7 +11,7 @@ import qualified Data.List.NonEmpty as NL
 import           Data.Maybe         (fromJust)
 import           Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           Pashua
+import           Graphics.UI.Pashua
 import           System.IO          (hClose)
 import           System.Process
     ( CreateProcess (..)
@@ -38,12 +40,13 @@ pashuaExec = "/Applications/Pashua.app/Contents/MacOS/Pashua"
 runPashuaStock :: [Text] -> IO [Text]
 runPashuaStock xs = do
   createProcess (proc pashuaExec ["-"])
-    { std_in = CreatePipe, std_out = CreatePipe }>>= \case
-    (Just stdin', Just stdout', _, _) -> do
-      forM_ xs $ TIO.hPutStrLn stdin'
-      hClose stdin'
-      T.lines <$> TIO.hGetContents stdout'
-    _ -> error "Can't create Pashua process"
+    { std_in = CreatePipe, std_out = CreatePipe } >>=
+    \case
+      (Just stdin', Just stdout', _, _) -> do
+        forM_ xs $ TIO.hPutStrLn stdin'
+        hClose stdin'
+        T.lines <$> TIO.hGetContents stdout'
+      _ -> error "Can't create Pashua process"
 
 main :: IO ()
 main = do

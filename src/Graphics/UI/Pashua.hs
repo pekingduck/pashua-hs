@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 
-module Pashua
+module Graphics.UI.Pashua
   ( Widget(..)
   , WindowAppearance(..)
   , Completion(..)
@@ -238,10 +238,11 @@ boolToInt True  = 1
 boolToInt False = 0
 
 coordFmt :: ID -> (Attribute, Attribute) -> Maybe Coord -> [Text]
-coordFmt wid (x, y)= maybe [] $ \(a, b) ->
-              [ sformat (stext % "." % stext % "=" % int) wid x a
-              , sformat (stext % "." % stext % "=" % int) wid y b
-              ]
+coordFmt wid (x, y)=
+  maybe [] $ \(a, b) ->
+               [ sformat (stext % "." % stext % "=" % int) wid x a
+               , sformat (stext % "." % stext % "=" % int) wid y b
+               ]
 
 textFmt :: ID -> Attribute -> Maybe Text -> [Text]
 textFmt wid attr = maybe [] $ \a ->
