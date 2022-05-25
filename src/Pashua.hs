@@ -261,7 +261,6 @@ instance Serializable Window where
     , coordFmt "*" ("x", "y") xy
     ]
 
-
 instance Show a => Serializable (Widget a) where
   serialize (Button {..}) =
     let widgetID = show id_ in
@@ -579,6 +578,8 @@ defaultDate id_ =
 runForm :: Show a => Form a -> [Text]
 runForm = mconcat . serialize
 
+-- Smart constructor
+-- default_ must be in items if it's not Nothing
 mkListWithDefault :: Maybe Text -> NL.NonEmpty Text -> Maybe ListWithDefault
 mkListWithDefault default_ items =
   case default_ of
