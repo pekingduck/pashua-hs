@@ -1,7 +1,7 @@
 cradle:
   stack:
-    - path: "./src/Main.hs"
-      component: "pashua:exe:pashua"
+    - path: "./src"
+      component: "pashua:lib"
 
-    - path: "./src/Pashua.hs"
+    - path: "./app/Main.hs"
       component: "pashua:exe:pashua"

@@ -38,15 +38,34 @@ module Graphics.UI.Pashua
   , runForm
   , mkListWithDefault
   , parseResult
+  , withPashua
+  , runPashua
   ) where
 
+import           Control.Monad         (forM_)
 import           Data.Functor          ((<&>))
 import           Data.List             (find)
 import qualified Data.List.NonEmpty    as NL
-import           Data.Text             (Text, breakOn, null, tail, unwords)
+import           Data.Text
+    ( Text
+    , breakOn
+    , lines
+    , null
+    , replace
+    , tail
+    , unwords
+    )
+import qualified Data.Text.IO          as TIO
 import           Formatting            (sformat, (%))
 import           Formatting.Formatters (int, stext, string)
-import           Prelude               hiding (null, tail, unwords)
+import           Prelude               hiding (lines, null, tail, unwords)
+import           System.IO             (hClose)
+import           System.Process
+    ( CreateProcess (..)
+    , StdStream (..)
+    , createProcess
+    , proc
+    )
 
 
 type ID = Text
@@ -226,16 +245,33 @@ data Widget a =
   , tooltip  :: Maybe Text
   , xy       :: Maybe Coord
   } |
-  Image { id_ :: a }|
-  Text_ { id_ :: a }|
-  TextBox { id_ :: a }
+  Image { id_ :: a } |
+  Text_
+  { id_      :: a
+  , text     :: Text
+  , label_   :: Maybe Text
+  , disabled :: Maybe Bool
+  , tooltip  :: Maybe Text
+  , xy       :: Maybe Coord
+  , relXY    :: Maybe Coord
+  } |
+  TextBox
+  { id_       :: a
+  , default_  :: Maybe Text
+  , label_    :: Maybe Text
+  , width     :: Maybe Int
+  , height    :: Maybe Int
+  , fontSize  :: Maybe FontSize
+  , fontType  :: Maybe FontType
+  , disabled  :: Maybe Bool
+  , mandatory :: Maybe Bool
+  , tooltip   :: Maybe Text
+  , xy        :: Maybe Coord
+  , relXY     :: Maybe Coord
+  }
   deriving (Functor, Show) -- Functor because we need Widget Text for serialization
 
 data Form a = Form (Maybe Window) [Widget a]
-
-boolToInt :: Bool -> Int
-boolToInt True  = 1
-boolToInt False = 0
 
 coordFmt :: ID -> (Attribute, Attribute) -> Maybe Coord -> [Text]
 coordFmt wid (x, y)=
@@ -396,6 +432,30 @@ instance Serializable (Widget Text) where
       in [ showFmt id_ "date" (Just date)
          , showFmt id_ "time" (Just time)
          ]
+  serialize Text_ {..} =
+    [ textFmt id_ "type" (Just "text")
+    , textFmt id_ "label" label_
+    , textFmt id_ "text" ((Just . replaceNL) text)
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ]
+  serialize TextBox {..} =
+    [ textFmt id_ "type" (Just "textbox")
+    , textFmt id_ "label" label_
+    , showFmt id_ "height" height
+    , showFmt id_ "width" width
+    , showFmt id_ "fontsize" fontSize
+    , showFmt id_ "fonttype" fontType
+    , textFmt id_ "default" (replaceNL <$> default_)
+    , showFmt id_ "disabled" (boolToInt <$> disabled)
+    , showFmt id_ "mandatory" (boolToInt <$> disabled)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , coordFmt id_ ("relx", "rely") relXY
+    ]
+
   -- TODO: image, text, textbox
   serialize _ = []
 
@@ -580,13 +640,36 @@ defaultImage :: a -> Widget a
 defaultImage id_ =
   Image { id_ = id_ }
 
-defaultText_ :: a -> Widget a
-defaultText_ id_ =
-  Text_ { id_ = id_ }
+defaultText_ :: a -> Text -> Widget a
+defaultText_ id_ text =
+  Text_
+  { id_ = id_
+  , text = text
+  , label_      = Nothing
+  , disabled    = Nothing
+  , tooltip     = Nothing
+  , xy          = Nothing
+  , relXY       = Nothing
+  }
 
 defaultTextBox :: a -> Widget a
 defaultTextBox id_ =
-  TextBox { id_ = id_ }
+  TextBox
+  { id_ = id_
+  , default_    = Nothing
+  , label_      = Nothing
+  , width       = Nothing
+  , height      = Nothing
+  , fontSize    = Nothing
+  , fontType    = Nothing
+  , mandatory   = Nothing
+  , disabled    = Nothing
+  , tooltip     = Nothing
+  , xy          = Nothing
+  , relXY       = Nothing
+
+
+  }
 
 runForm :: Form a -> [Text]
 runForm = mconcat . serialize
@@ -605,6 +688,27 @@ parseResult (Form _ widgets) inputLines =
     -- Splits line (e.g. "a=b") by "=", return ("a", "b")
     split l = let (k, v) = breakOn "=" l in (k, if null v then "" else tail v)
 
+----------------------
+-- Helper functions --
+----------------------
+pashuaExec :: String
+pashuaExec = "/Applications/Pashua.app/Contents/MacOS/Pashua"
+
+withPashua :: Eq a => String -> Form a -> IO [(a, Text)]
+withPashua _ (Form _ []) = return []
+withPashua pashua f = do
+  createProcess (proc pashua ["-"])
+    { std_in = CreatePipe, std_out = CreatePipe } >>=
+    \case
+      (Just stdin', Just stdout', _, _) -> do
+        forM_ (runForm f) $ TIO.hPutStrLn stdin'
+        hClose stdin'
+        (lines <$> TIO.hGetContents stdout') <&> parseResult f
+      _ -> error "Can't create Pashua process"
+
+runPashua :: Eq a => Form a -> IO [(a, Text)]
+runPashua = withPashua pashuaExec
+
 -- Smart constructor
 -- default_ must be in items if it's not Nothing
 mkListWithDefault :: Maybe Text -> NL.NonEmpty Text -> Maybe ListWithDefault
@@ -614,3 +718,13 @@ mkListWithDefault default_ items =
     Just x -> if x `elem` items
               then Just $ ListWithDefault default_ items
               else Nothing
+
+boolToInt :: Bool -> Int
+boolToInt True  = 1
+boolToInt False = 0
+
+replaceNL :: Text -> Text
+replaceNL = replace "\n" "[return]"
+
+unreplaceNL :: Text -> Text
+unreplaceNL = replace "[return]" "\n"

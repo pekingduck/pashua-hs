@@ -21,8 +21,9 @@ library
                , text
                , formatting
                , process
+               , ghc-prim
                              
-executable pashua
+executable pashuatest
   hs-source-dirs:      app
   main-is:             Main.hs
   default-language:    Haskell2010
@@ -31,3 +32,4 @@ executable pashua
                      , formatting
                      , process
                      , pashua
+                     , turtle
