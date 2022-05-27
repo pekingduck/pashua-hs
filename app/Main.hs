@@ -16,7 +16,7 @@ import           Graphics.UI.Pashua
 data SomeID =
   Passwd | Txt | Pop | OkButton | OtherButton |
   Combo | Gaga | Browser | Save | Cal |
-  TxtField | TxtBox
+  TxtField | TxtBox | Img
   deriving (Show, Eq)
 
 -- runPashuaTurtle :: TT.MonadIO m => [Text] -> m [Text]
@@ -33,28 +33,32 @@ main = do
   let
     l :: ListWithDefault
     l = fromJust (mkListWithDefault (Just "Gaga") ("Radio" NL.:| ["Gaga"]))
+    imageWidth = fromJust $ mkPixel 250
     b :: [Widget SomeID]
-    b = [ defaultButton OtherButton "Don't Click!"
-        , (defaultCombobox Combo ("Two" NL.:| [ "Worlds", "Collide" ]))
+    b = [ button OtherButton "Don't Click!"
+        , (comboBox Combo ("Two" NL.:| [ "Worlds", "Collide" ]))
           { completion = Just CaseSensitive }
-        , defaultRadioButton Gaga l
-        , (defaultOpenBrowser Browser)
+        , radioButton Gaga l
+        , (openBrowser Browser)
           { fileType = Just (Extensions ("jpg" NL.:| ["dhall"])) }
-        , (defaultSaveBrowser Save)
+        , (saveBrowser Save)
           { fileExtension = Just "cabal" }
-        , defaultPopup Pop l
-        , (defaultDefaultButton OkButton) { label_ = Just "Subscribe" }
-        , (defaultTextField TxtField) { default_ = Just "Black Friday" }
-        , (defaultPassword Passwd) { label_ = Just "Tell me your password" }
-        , (defaultDate Cal) { choice = Just DateOnly
+        , popup Pop l
+        , (defaultButton OkButton) { label_ = Just "Subscribe" }
+        , (textField TxtField) { default_ = Just "Black Friday" }
+        , (password Passwd) { label_ = Just "Tell me your password" }
+        , (date Cal) { choice = Just DateOnly
                             , default_ = Just "1997-07-01"
                             , style = Just Textual }
-        , (defaultText_ Txt "OK\nOK") { tooltip = Just "Tip of the iceberg" }
-        , (defaultTextBox TxtBox) { default_ = Just "Hmm\nmumm"
+        , (text_ Txt "OK\nOK") { tooltip = Just "Tip of the iceberg"
+                               , relY = mkRelY (negate 20) }
+        , (textBox TxtBox) { default_ = Just "Hmm\nmumm"
                                   , disabled = Just False
                                   , fontType = Just Fixed }
+        , (image Img "test.jpg") { dimensions = Just (Width imageWidth Nothing)
+                                 , relY = mkRelY 300 }
         ]
-    w = defaultWindow { title = Just "One Weird Trick"
+    w = window { title = Just "One Weird Trick"
                       , transparency = Just 0.9
                       }
     f = Form (Just w) b

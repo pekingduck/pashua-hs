@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances     #-}
+-- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -16,27 +17,32 @@ module Graphics.UI.Pashua
   , FontType(..)
   , DateChoice(..)
   , DateStyle(..)
+  , ImageDimensions(..)
   , Form(..)
   , ListWithDefault
+  , RelX
+  , RelY
+  , button
+  , window
+  , cancelButton
+  , checkbox
+  , comboBox
+  , radioButton
+  , popup
+  , openBrowser
+  , saveBrowser
   , defaultButton
-  , defaultWindow
-  , defaultCancelButton
-  , defaultCheckbox
-  , defaultCombobox
-  , defaultRadioButton
-  , defaultPopup
-  , defaultOpenBrowser
-  , defaultSaveBrowser
-  , defaultDefaultButton
-  , defaultTextField
-  , defaultPassword
-  , defaultDate
-  , defaultImage
-  , defaultText_
-  , defaultTextBox
+  , textField
+  , password
+  , date
+  , image
+  , text_
+  , textBox
   , serialize
   , runForm
   , mkListWithDefault
+  , mkRelY
+  , mkPixel
   , parseResult
   , withPashua
   , runPashua
@@ -73,6 +79,18 @@ type ID = Text
 type Attribute = Text
 
 type Coord = (Int, Int)
+
+type RelX = Int
+
+newtype Pixel = Pixel Int
+
+instance Show Pixel where
+  show (Pixel i) = show i
+
+newtype RelY = RelY Int
+
+instance Show RelY where
+  show (RelY i) = show i
 
 data ListWithDefault = ListWithDefault (Maybe Text) (NL.NonEmpty Text)
   deriving Show
@@ -111,6 +129,18 @@ instance Show DateStyle where
 
 data DateChoice = DateOnly | TimeOnly | DateTime deriving Show
 
+-- Bool - upscale
+data ImageDimensions
+  = Height Pixel (Maybe Bool)
+  | MaxHeight Pixel
+  | Width Pixel (Maybe Bool)
+  | MaxWidth Pixel
+  | WidthHeight Pixel Pixel (Maybe Bool)
+  | MaxWidthMaxHeight Pixel Pixel
+  | MaxWidthHeight Pixel Pixel
+  | WidthMaxHeight Pixel Pixel
+  deriving Show
+
 class Serializable w where
   serialize :: w -> [[Text]]
 
@@ -145,9 +175,10 @@ data Widget a =
   , disabled :: Maybe Bool
   , tooltip  :: Maybe Text
   , xy       :: Maybe Coord
-  , relXY    :: Maybe Coord
+  , relX     :: Maybe RelX
+  , relY     :: Maybe RelY
   } |
-  Combobox
+  ComboBox
   { id_         :: a
   , label_      :: Maybe Text
   , options     :: NL.NonEmpty Text
@@ -159,7 +190,8 @@ data Widget a =
   , tooltip     :: Maybe Text
   , width       :: Maybe Int
   , xy          :: Maybe Coord
-  , relXY       :: Maybe Coord
+  , relX        :: Maybe RelX
+  , relY        :: Maybe RelY
   } |
   RadioButton
   { id_       :: a
@@ -170,7 +202,9 @@ data Widget a =
   , disabled  :: Maybe Bool
   , tooltip   :: Maybe Text
   , xy        :: Maybe Coord
-  , relXY     :: Maybe Coord
+  , relX      :: Maybe RelX
+  , relY      :: Maybe RelY
+
   } |
   Popup
   { id_       :: a
@@ -181,7 +215,9 @@ data Widget a =
   , disabled  :: Maybe Bool
   , tooltip   :: Maybe Text
   , xy        :: Maybe Coord
-  , relXY     :: Maybe Coord
+    , relX    :: Maybe RelX
+  , relY      :: Maybe RelY
+
   } |
 
   OpenBrowser
@@ -193,7 +229,8 @@ data Widget a =
   , placeholder :: Maybe Text
   , mandatory   :: Maybe Bool
   , xy          :: Maybe Coord
-  , relXY       :: Maybe Coord
+    , relX      :: Maybe RelX
+  , relY        :: Maybe RelY
   } |
   SaveBrowser
   { id_           :: a
@@ -204,7 +241,8 @@ data Widget a =
   , placeholder   :: Maybe Text
   , mandatory     :: Maybe Bool
   , xy            :: Maybe Coord
-  , relXY         :: Maybe Coord
+  , relX          :: Maybe RelX
+  , relY          :: Maybe RelY
   } |
   DefaultButton
   { id_      :: a
@@ -222,7 +260,8 @@ data Widget a =
   , tooltip     :: Maybe Text
   , width       :: Maybe Int
   , xy          :: Maybe Coord
-  , relXY       :: Maybe Coord
+  , relX        :: Maybe RelX
+  , relY        :: Maybe RelY
   } |
   Password
   { id_       :: a
@@ -233,7 +272,8 @@ data Widget a =
   , tooltip   :: Maybe Text
   , width     :: Maybe Int
   , xy        :: Maybe Coord
-  , relXY     :: Maybe Coord
+  , relX      :: Maybe RelX
+  , relY      :: Maybe RelY
   } |
   Date
   { id_      :: a
@@ -245,7 +285,17 @@ data Widget a =
   , tooltip  :: Maybe Text
   , xy       :: Maybe Coord
   } |
-  Image { id_ :: a } |
+  Image
+  { id_        :: a
+  , path       :: Text
+  , label_     :: Maybe Text
+  , border     :: Maybe Bool
+  , dimensions :: Maybe ImageDimensions
+  , tooltip    :: Maybe Text
+  , xy         :: Maybe Coord
+  , relX       :: Maybe RelX
+  , relY       :: Maybe RelY
+  } |
   Text_
   { id_      :: a
   , text     :: Text
@@ -253,7 +303,8 @@ data Widget a =
   , disabled :: Maybe Bool
   , tooltip  :: Maybe Text
   , xy       :: Maybe Coord
-  , relXY    :: Maybe Coord
+  , relX     :: Maybe RelX
+  , relY     :: Maybe RelY
   } |
   TextBox
   { id_       :: a
@@ -267,7 +318,8 @@ data Widget a =
   , mandatory :: Maybe Bool
   , tooltip   :: Maybe Text
   , xy        :: Maybe Coord
-  , relXY     :: Maybe Coord
+  , relX      :: Maybe RelX
+  , relY      :: Maybe RelY
   }
   deriving (Functor, Show) -- Functor because we need Widget Text for serialization
 
@@ -325,9 +377,10 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ]
-  serialize Combobox {..} =
+  serialize ComboBox {..} =
     [ textFmt id_ "type" (Just "combobox")
     , textFmt id_ "label" label_
     , showFmt id_ "width" width
@@ -338,7 +391,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ] <> NL.toList (options <&> textFmt id_ "option" . Just)
   serialize RadioButton {..} =
     [ textFmt id_ "type" (Just "radiobutton")
@@ -347,7 +401,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ] <> let ListWithDefault def opts = options_ in
            NL.toList (opts <&> textFmt id_ "option" . Just) <>
            flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
@@ -358,7 +413,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ] <> let ListWithDefault def opts = options_ in
            NL.toList (opts <&> textFmt id_ "option" . Just) <>
            flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
@@ -370,7 +426,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "mandatory" mandatory
     , textFmt id_ "placeholder" placeholder
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ] <> flip (maybe []) fileType \case
     Directory -> [ textFmt id_ "filetype" (Just "directory") ]
     Extensions es ->
@@ -384,7 +441,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "mandatory" mandatory
     , textFmt id_ "placeholder" placeholder
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ]
   serialize DefaultButton {..} =
     [ textFmt id_ "type" (Just "defaultbutton")
@@ -402,7 +460,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ]
   serialize Password {..} =
     [ textFmt id_ "type" (Just "password")
@@ -413,7 +472,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ]
   serialize Date {..} =
     [ textFmt id_ "type" (Just "date")
@@ -439,7 +499,8 @@ instance Serializable (Widget Text) where
     , showFmt id_ "disabled" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ]
   serialize TextBox {..} =
     [ textFmt id_ "type" (Just "textbox")
@@ -453,11 +514,42 @@ instance Serializable (Widget Text) where
     , showFmt id_ "mandatory" (boolToInt <$> disabled)
     , textFmt id_ "tooltip" tooltip
     , coordFmt id_ ("x", "y") xy
-    , coordFmt id_ ("relx", "rely") relXY
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
     ]
+  serialize Image {..} =
+    [ textFmt id_ "type" (Just "image")
+    , textFmt id_ "path" (Just path)
+    , textFmt id_ "label" label_
+    , showFmt id_ "border" (boolToInt <$> border)
+    , textFmt id_ "tooltip" tooltip
+    , coordFmt id_ ("x", "y") xy
+    , showFmt id_ "relx" relX
+    , showFmt id_ "rely" relY
+    ] <> case dimensions of
+           Just (Height h upscale) ->
+             [ showFmt id_ "height" (Just h)
+             , showFmt id_ "upscale" (boolToInt <$> upscale) ]
+           Just (MaxHeight mh) -> [ showFmt id_ "maxheight" (Just mh) ]
+           Just (Width w upscale) ->
+             [ showFmt id_ "width" (Just w)
+             , showFmt id_ "upscale" (boolToInt <$> upscale) ]
+           Just (MaxWidth mw) -> [ showFmt id_ "maxwidth" (Just mw) ]
+           Just (WidthHeight w h upscale) ->
+             [ showFmt id_ "height" (Just h)
+             , showFmt id_ "width" (Just w)
+             , showFmt id_ "upscale" (boolToInt <$> upscale) ]
+           Just (MaxWidthMaxHeight mw mh) ->
+             [ showFmt id_ "maxwidth" (Just mw)
+             , showFmt id_ "maxheight" (Just mh) ]
+           Just (MaxWidthHeight mw h) ->
+             [ showFmt id_ "maxwidth" (Just mw)
+             , showFmt id_ "height" (Just h) ]
+           Just (WidthMaxHeight w mh) ->
+             [ showFmt id_ "maxwidth" (Just w)
+             , showFmt id_ "height" (Just mh) ]
+           Nothing -> []
 
-  -- TODO: image, text, textbox
-  serialize _ = []
 
 mkWidgetID :: Int -> a -> Text
 mkWidgetID i _  = sformat ("widget" % int) i
@@ -471,8 +563,8 @@ instance Serializable (Form a) where
     where
       widgets' = zip [0..] widgets <&> \(i, w) -> fmapWidget (mkWidgetID i) w
 
-defaultWindow :: Window
-defaultWindow =
+window :: Window
+window =
   Window
   { appearance    = Nothing
   , autoCloseTime = Nothing
@@ -483,8 +575,8 @@ defaultWindow =
   , xy            = Nothing
   }
 
-defaultButton :: a -> Text -> Widget a
-defaultButton id_ label =
+button :: a -> Text -> Widget a
+button id_ label =
   Button
   { id_ = id_
   , label = label
@@ -493,16 +585,16 @@ defaultButton id_ label =
   , tooltip = Nothing }
 
 
-defaultCancelButton :: a -> Widget a
-defaultCancelButton id_ =
+cancelButton :: a -> Widget a
+cancelButton id_ =
   CancelButton
   { id_ = id_
   , label_ = Nothing
   , disabled = Nothing
   , tooltip = Nothing }
 
-defaultCheckbox :: a -> Text -> Widget a
-defaultCheckbox id_ label =
+checkbox :: a -> Text -> Widget a
+checkbox id_ label =
   Checkbox
   { id_ = id_
   , label = label
@@ -510,11 +602,13 @@ defaultCheckbox id_ label =
   , tooltip = Nothing
   , checked = Nothing
   , xy = Nothing
-  , relXY = Nothing }
+  , relX = Nothing
+  , relY = Nothing
+  }
 
-defaultCombobox :: a -> NL.NonEmpty Text -> Widget a
-defaultCombobox id_ optionList =
-  Combobox
+comboBox :: a -> NL.NonEmpty Text -> Widget a
+comboBox id_ optionList =
+  ComboBox
   { id_ = id_
   , label_ = Nothing
   , options = optionList
@@ -526,11 +620,12 @@ defaultCombobox id_ optionList =
   , tooltip = Nothing
   , width = Nothing
   , xy = Nothing
-  , relXY = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultRadioButton :: a -> ListWithDefault -> Widget a
-defaultRadioButton id_ optionList =
+radioButton :: a -> ListWithDefault -> Widget a
+radioButton id_ optionList =
   RadioButton
   { id_ = id_
   , label_ = Nothing
@@ -540,11 +635,12 @@ defaultRadioButton id_ optionList =
   , disabled = Nothing
   , tooltip = Nothing
   , xy = Nothing
-  , relXY = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultPopup :: a -> ListWithDefault -> Widget a
-defaultPopup id_ optionList =
+popup :: a -> ListWithDefault -> Widget a
+popup id_ optionList =
   Popup
   { id_ = id_
   , label_ = Nothing
@@ -554,11 +650,12 @@ defaultPopup id_ optionList =
   , disabled = Nothing
   , tooltip = Nothing
   , xy = Nothing
-  , relXY = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultOpenBrowser :: a -> Widget a
-defaultOpenBrowser id_ =
+openBrowser :: a -> Widget a
+openBrowser id_ =
   OpenBrowser
   { id_ = id_
   , label_ = Nothing
@@ -568,11 +665,12 @@ defaultOpenBrowser id_ =
   , placeholder = Nothing
   , mandatory = Nothing
   , xy = Nothing
-  , relXY = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultSaveBrowser :: a -> Widget a
-defaultSaveBrowser id_ =
+saveBrowser :: a -> Widget a
+saveBrowser id_ =
   SaveBrowser
   { id_ = id_
   , label_ = Nothing
@@ -582,11 +680,12 @@ defaultSaveBrowser id_ =
   , placeholder = Nothing
   , mandatory = Nothing
   , xy = Nothing
-  , relXY = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultDefaultButton :: a -> Widget a
-defaultDefaultButton id_ =
+defaultButton :: a -> Widget a
+defaultButton id_ =
   DefaultButton
   { id_ = id_
   , label_ = Nothing
@@ -594,8 +693,8 @@ defaultDefaultButton id_ =
   , tooltip = Nothing
   }
 
-defaultTextField :: a -> Widget a
-defaultTextField id_ =
+textField :: a -> Widget a
+textField id_ =
   TextField
   { id_         = id_
   , label_      = Nothing
@@ -606,11 +705,12 @@ defaultTextField id_ =
   , tooltip     = Nothing
   , width       = Nothing
   , xy          = Nothing
-  , relXY       = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultPassword :: a -> Widget a
-defaultPassword id_ =
+password :: a -> Widget a
+password id_ =
   Password
   { id_         = id_
   , label_      = Nothing
@@ -620,11 +720,12 @@ defaultPassword id_ =
   , tooltip     = Nothing
   , width       = Nothing
   , xy          = Nothing
-  , relXY       = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultDate :: a -> Widget a
-defaultDate id_ =
+date :: a -> Widget a
+date id_ =
   Date
   { id_      = id_
   , label_   = Nothing
@@ -636,12 +737,22 @@ defaultDate id_ =
   , xy       = Nothing
   }
 
-defaultImage :: a -> Widget a
-defaultImage id_ =
-  Image { id_ = id_ }
+image :: a -> Text -> Widget a
+image id_ path =
+  Image
+  { id_ = id_
+  , path = path
+  , label_    = Nothing
+  , border = Nothing
+  , dimensions = Nothing
+  , tooltip = Nothing
+  , xy        = Nothing
+  , relX      = Nothing
+  , relY      = Nothing
+  }
 
-defaultText_ :: a -> Text -> Widget a
-defaultText_ id_ text =
+text_ :: a -> Text -> Widget a
+text_ id_ text =
   Text_
   { id_ = id_
   , text = text
@@ -649,11 +760,12 @@ defaultText_ id_ text =
   , disabled    = Nothing
   , tooltip     = Nothing
   , xy          = Nothing
-  , relXY       = Nothing
+  , relX = Nothing
+  , relY = Nothing
   }
 
-defaultTextBox :: a -> Widget a
-defaultTextBox id_ =
+textBox :: a -> Widget a
+textBox id_ =
   TextBox
   { id_ = id_
   , default_    = Nothing
@@ -666,9 +778,8 @@ defaultTextBox id_ =
   , disabled    = Nothing
   , tooltip     = Nothing
   , xy          = Nothing
-  , relXY       = Nothing
-
-
+  , relX = Nothing
+  , relY = Nothing
   }
 
 runForm :: Form a -> [Text]
@@ -709,6 +820,16 @@ withPashua pashua f = do
 runPashua :: Eq a => Form a -> IO [(a, Text)]
 runPashua = withPashua pashuaExec
 
+boolToInt :: Bool -> Int
+boolToInt True  = 1
+boolToInt False = 0
+
+replaceNL :: Text -> Text
+replaceNL = replace "\n" "[return]"
+
+unreplaceNL :: Text -> Text
+unreplaceNL = replace "[return]" "\n"
+
 -- Smart constructor
 -- default_ must be in items if it's not Nothing
 mkListWithDefault :: Maybe Text -> NL.NonEmpty Text -> Maybe ListWithDefault
@@ -719,12 +840,11 @@ mkListWithDefault default_ items =
               then Just $ ListWithDefault default_ items
               else Nothing
 
-boolToInt :: Bool -> Int
-boolToInt True  = 1
-boolToInt False = 0
 
-replaceNL :: Text -> Text
-replaceNL = replace "\n" "[return]"
+mkRelY :: Int -> Maybe RelY
+mkRelY i | i < negate 20 = Nothing
+         | otherwise = Just $ RelY i
 
-unreplaceNL :: Text -> Text
-unreplaceNL = replace "[return]" "\n"
+mkPixel :: Int -> Maybe Pixel
+mkPixel i | i < 0 = Nothing
+          | otherwise = Just $ Pixel i
