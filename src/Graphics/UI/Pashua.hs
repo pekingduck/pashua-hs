@@ -204,7 +204,6 @@ data Widget a =
   , xy        :: Maybe Coord
   , relX      :: Maybe RelX
   , relY      :: Maybe RelY
-
   } |
   Popup
   { id_       :: a
@@ -215,11 +214,9 @@ data Widget a =
   , disabled  :: Maybe Bool
   , tooltip   :: Maybe Text
   , xy        :: Maybe Coord
-    , relX    :: Maybe RelX
+  , relX      :: Maybe RelX
   , relY      :: Maybe RelY
-
   } |
-
   OpenBrowser
   { id_         :: a
   , label_      :: Maybe Text
@@ -229,7 +226,7 @@ data Widget a =
   , placeholder :: Maybe Text
   , mandatory   :: Maybe Bool
   , xy          :: Maybe Coord
-    , relX      :: Maybe RelX
+  , relX        :: Maybe RelX
   , relY        :: Maybe RelY
   } |
   SaveBrowser
