@@ -5,40 +5,44 @@
 
 module Main where
 
-import           Control.Monad      (forM_)
-import           Data.Functor       ((<&>))
-import qualified Data.List.NonEmpty as NL
-import           Data.Maybe         (fromJust)
-import           Data.Text          as T
+import           Control.Monad             (forM_)
+import           Data.Functor              ((<&>))
+import qualified Data.List.NonEmpty        as NL
+import           Data.Maybe                (fromJust)
+import           Data.Text                 as T
 import           Graphics.UI.Pashua
+import           Graphics.UI.Pashua.Parser
+
 --import qualified Turtle             as TT
 
 data SomeID =
   Passwd | Txt | Pop | OkButton | OtherButton |
-  Combo | Gaga | Browser | Save | Cal |
+  Combo | Radio | Browser | Save | Cal |
   TxtField | TxtBox | Img
   deriving (Show, Eq)
 
--- runPashuaTurtle :: TT.MonadIO m => [Text] -> m [Text]
--- runPashuaTurtle xs = do
---   -- inproc expects trailing "\n" in lines fed to stdin
---   let pashuaOut = TT.inproc "/Applications/Pashua.app/Contents/MacOS/Pashua"
---                   ["-"] $ TT.toLines $ TT.select $ xs <&> \x -> x <> "\n"
---       f = TT.Fold (\x a -> TT.lineToText a : x) [] id
---   TT.reduce f pashuaOut
+data Food = Sushi | Tofu deriving (Show, Eq)
 
+readFood :: Reader Food
+readFood =
+  \case
+    "Sushi" -> Right (Sushi, "")
+    "Tofu"  -> Right (Tofu, "")
+    s       -> Left "Invalid food"
+
+parseFood key result = fst <$> parse readFood key result
 
 main :: IO ()
 main = do
   let
     l :: ListWithDefault
-    l = fromJust (mkListWithDefault (Just "Gaga") ("Radio" NL.:| ["Gaga"]))
+    l = fromJust (mkListWithDefault (Just Sushi) (Sushi NL.:| [Tofu]))
     imageWidth = fromJust $ mkPixel 250
     b :: [Widget SomeID]
     b = [ button OtherButton "Don't Click!"
         , (comboBox Combo ("Two" NL.:| [ "Worlds", "Collide" ]))
           { completion = Just CaseSensitive }
-        , radioButton Gaga l
+        , radioButton Radio l
         , (openBrowser Browser)
           { fileType = Just (Extensions ("jpg" NL.:| ["dhall"])) }
         , (saveBrowser Save)
@@ -62,4 +66,6 @@ main = do
                       , transparency = Just 0.9
                       }
     f = Form (Just w) b
-  runPashua f >>= print
+  result <- runPashua f
+  print result
+  print $ parseFood Radio result

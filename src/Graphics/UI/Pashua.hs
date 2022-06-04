@@ -22,6 +22,7 @@ module Graphics.UI.Pashua
   , ListWithDefault
   , RelX
   , RelY
+  , Result(..)
   , button
   , window
   , cancelButton
@@ -57,6 +58,7 @@ import           Data.Text
     , breakOn
     , lines
     , null
+    , pack
     , replace
     , tail
     , unwords
@@ -140,6 +142,8 @@ data ImageDimensions
   | MaxWidthHeight Pixel Pixel
   | WidthMaxHeight Pixel Pixel
   deriving Show
+
+type Result a = [(a, Text)]
 
 class Serializable w where
   serialize :: w -> [[Text]]
@@ -782,7 +786,7 @@ textBox id_ =
 runForm :: Form a -> [Text]
 runForm = mconcat . serialize
 
-parseResult :: Eq a => Form a -> [Text] -> [(a, Text)]
+parseResult :: Eq a => Form a -> [Text] -> Result a
 parseResult (Form _ widgets) inputLines =
   -- lookupTable [ ("widget0", id0), ("widget1", id1), ...]
   let lookupTable = zip [0..] widgets <&> \(i, w) -> (mkWidgetID i id_, id_ w)
@@ -802,7 +806,7 @@ parseResult (Form _ widgets) inputLines =
 pashuaExec :: String
 pashuaExec = "/Applications/Pashua.app/Contents/MacOS/Pashua"
 
-withPashua :: Eq a => String -> Form a -> IO [(a, Text)]
+withPashua :: Eq a => String -> Form a -> IO (Result a)
 withPashua _ (Form _ []) = return []
 withPashua pashua f = do
   createProcess (proc pashua ["-"])
@@ -814,7 +818,7 @@ withPashua pashua f = do
         (lines <$> TIO.hGetContents stdout') <&> parseResult f
       _ -> error "Can't create Pashua process"
 
-runPashua :: Eq a => Form a -> IO [(a, Text)]
+runPashua :: Eq a => Form a -> IO (Result a)
 runPashua = withPashua pashuaExec
 
 boolToInt :: Bool -> Int
@@ -829,12 +833,17 @@ unreplaceNL = replace "[return]" "\n"
 
 -- Smart constructor
 -- default_ must be in items if it's not Nothing
-mkListWithDefault :: Maybe Text -> NL.NonEmpty Text -> Maybe ListWithDefault
+mkListWithDefault
+  :: (Eq a, Show a)
+  => Maybe a
+  -> NL.NonEmpty a
+  -> Maybe ListWithDefault
 mkListWithDefault default_ items =
+  let toText = pack . show in
   case default_ of
-    Nothing -> Just $ ListWithDefault Nothing items
+    Nothing -> Just $ ListWithDefault Nothing (toText <$> items)
     Just x -> if x `elem` items
-              then Just $ ListWithDefault default_ items
+              then Just $ ListWithDefault (Just (toText x)) (toText <$> items)
               else Nothing
 
 
