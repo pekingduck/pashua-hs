@@ -21,7 +21,6 @@ library
                , text
                , formatting
                , process
-               , ghc-prim
                              
 executable pashuatest
   hs-source-dirs:      app
@@ -32,4 +31,3 @@ executable pashuatest
                      , formatting
                      , process
                      , pashua
-                     , turtle
