@@ -18,12 +18,11 @@ module Graphics.UI.Pashua.Parser
   , parseFloat
   , parseBool
   , parseInt
-  , assoc
   , parse
   ) where
 
 import           Data.Bifunctor          (first)
-import           Data.List               (find)
+import           Data.List               (find, lookup)
 import           Data.Text
     ( Text
     , drop
@@ -43,7 +42,7 @@ type Parser a = IR.IParser Text a
 
 parse :: Eq a => Parser b -> a -> [(a, Text)] -> Either (Err a) (b, Text)
 parse p key aList =
-  case assoc key aList of
+  case lookup key aList of
     Nothing -> Left FormCancelled
     Just s  -> first (ParseError key) $ runP p s
 
@@ -87,6 +86,3 @@ parseInt :: Eq a => a -> Result a -> Either (Err a) Int
 parseInt key aList =
   let p = IR.P R.decimal <* IR.P eos
   in fromIntegral . fst <$> parse p key aList
-
-assoc :: Eq a => a -> [(a, b)] -> Maybe b
-assoc key xs = snd <$> find ((== key) . fst) xs
