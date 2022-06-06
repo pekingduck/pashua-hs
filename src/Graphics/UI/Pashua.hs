@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances     #-}
--- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -19,10 +18,12 @@ module Graphics.UI.Pashua
   , DateStyle(..)
   , ImageDimensions(..)
   , Form(..)
-  , ListWithDefault
   , RelX
   , RelY
   , Result(..)
+  , OL.OptionList(OL.default_, OL.items)
+  , OL.mkOptionList
+  , OL.mkOptionListFromEnum
   , button
   , window
   , cancelButton
@@ -41,7 +42,6 @@ module Graphics.UI.Pashua
   , textBox
   , serialize
   , runForm
-  , mkListWithDefault
   , mkRelY
   , mkPixel
   , parseResult
@@ -49,10 +49,10 @@ module Graphics.UI.Pashua
   , runPashua
   ) where
 
-import           Control.Monad         (forM_)
-import           Data.Functor          ((<&>))
-import           Data.List             (find)
-import qualified Data.List.NonEmpty    as NL
+import           Control.Monad                 (forM_)
+import           Data.Functor                  ((<&>))
+import           Data.List                     (find)
+import qualified Data.List.NonEmpty            as NL
 import           Data.Text
     ( Text
     , breakOn
@@ -63,11 +63,17 @@ import           Data.Text
     , tail
     , unwords
     )
-import qualified Data.Text.IO          as TIO
-import           Formatting            (sformat, (%))
-import           Formatting.Formatters (int, stext, string)
-import           Prelude               hiding (lines, null, tail, unwords)
-import           System.IO             (hClose)
+import qualified Data.Text.IO                  as TIO
+import           Formatting                    (sformat, (%))
+import           Formatting.Formatters         (int, stext, string)
+import           Graphics.UI.Pashua.OptionList as OL
+import           Prelude                       hiding
+    ( lines
+    , null
+    , tail
+    , unwords
+    )
+import           System.IO                     (hClose)
 import           System.Process
     ( CreateProcess (..)
     , StdStream (..)
@@ -93,9 +99,6 @@ newtype RelY = RelY Int
 
 instance Show RelY where
   show (RelY i) = show i
-
-data ListWithDefault = ListWithDefault (Maybe Text) (NL.NonEmpty Text)
-  deriving Show
 
 data FontSize = Regular | Small | Mini
 
@@ -185,7 +188,7 @@ data Widget a =
   ComboBox
   { id_         :: a
   , label_      :: Maybe Text
-  , options     :: NL.NonEmpty Text
+  , options     :: OL.OptionList
   , completion  :: Maybe Completion
   , mandatory   :: Maybe Bool
   , rows        :: Maybe Int
@@ -200,7 +203,7 @@ data Widget a =
   RadioButton
   { id_       :: a
   , label_    :: Maybe Text
-  , options_  :: ListWithDefault
+  , options_  :: OL.OptionList
   , default_  :: Maybe Text
   , mandatory :: Maybe Bool
   , disabled  :: Maybe Bool
@@ -212,7 +215,7 @@ data Widget a =
   Popup
   { id_       :: a
   , label_    :: Maybe Text
-  , options_  :: ListWithDefault
+  , options_  :: OL.OptionList
   , default_  :: Maybe Text
   , mandatory :: Maybe Bool
   , disabled  :: Maybe Bool
@@ -394,7 +397,7 @@ instance Serializable (Widget Text) where
     , coordFmt id_ ("x", "y") xy
     , showFmt id_ "relx" relX
     , showFmt id_ "rely" relY
-    ] <> NL.toList (options <&> textFmt id_ "option" . Just)
+    ] <> NL.toList (OL.items options <&> textFmt id_ "option" . Just)
   serialize RadioButton {..} =
     [ textFmt id_ "type" (Just "radiobutton")
     , textFmt id_ "label" label_
@@ -404,9 +407,14 @@ instance Serializable (Widget Text) where
     , coordFmt id_ ("x", "y") xy
     , showFmt id_ "relx" relX
     , showFmt id_ "rely" relY
-    ] <> let ListWithDefault def opts = options_ in
-           NL.toList (opts <&> textFmt id_ "option" . Just) <>
-           flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
+    ] <>
+    let
+      --x = options :: _
+      def = OL.default_ options_
+      opts = OL.items options_
+    in
+      NL.toList (opts <&> textFmt id_ "option" . Just) <>
+      flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
   serialize Popup {..} =
     [ textFmt id_ "type" (Just "popup")
     , textFmt id_ "label" label_
@@ -416,7 +424,9 @@ instance Serializable (Widget Text) where
     , coordFmt id_ ("x", "y") xy
     , showFmt id_ "relx" relX
     , showFmt id_ "rely" relY
-    ] <> let ListWithDefault def opts = options_ in
+    ] <> let def = OL.default_ options_
+             opts = OL.items options_
+         in
            NL.toList (opts <&> textFmt id_ "option" . Just) <>
            flip (maybe []) def \x -> [ textFmt id_ "default" (Just x) ]
   serialize OpenBrowser {..} =
@@ -607,7 +617,7 @@ checkbox id_ label =
   , relY = Nothing
   }
 
-comboBox :: a -> NL.NonEmpty Text -> Widget a
+comboBox :: a -> OL.OptionList -> Widget a
 comboBox id_ optionList =
   ComboBox
   { id_ = id_
@@ -625,7 +635,7 @@ comboBox id_ optionList =
   , relY = Nothing
   }
 
-radioButton :: a -> ListWithDefault -> Widget a
+radioButton :: a -> OL.OptionList -> Widget a
 radioButton id_ optionList =
   RadioButton
   { id_ = id_
@@ -640,7 +650,7 @@ radioButton id_ optionList =
   , relY = Nothing
   }
 
-popup :: a -> ListWithDefault -> Widget a
+popup :: a -> OL.OptionList -> Widget a
 popup id_ optionList =
   Popup
   { id_ = id_
@@ -830,22 +840,6 @@ replaceNL = replace "\n" "[return]"
 
 unreplaceNL :: Text -> Text
 unreplaceNL = replace "[return]" "\n"
-
--- Smart constructor
--- default_ must be in items if it's not Nothing
-mkListWithDefault
-  :: (Eq a, Show a)
-  => Maybe a
-  -> NL.NonEmpty a
-  -> Maybe ListWithDefault
-mkListWithDefault default_ items =
-  let toText = pack . show in
-  case default_ of
-    Nothing -> Just $ ListWithDefault Nothing (toText <$> items)
-    Just x -> if x `elem` items
-              then Just $ ListWithDefault (Just (toText x)) (toText <$> items)
-              else Nothing
-
 
 mkRelY :: Int -> Maybe RelY
 mkRelY i | i < negate 20 = Nothing

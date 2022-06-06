@@ -15,7 +15,9 @@ extra-source-files:  README.md
 
 library
   hs-source-dirs: src
-  exposed-modules: Graphics.UI.Pashua, Graphics.UI.Pashua.Parser
+  exposed-modules: Graphics.UI.Pashua
+                 , Graphics.UI.Pashua.Parser
+                 , Graphics.UI.Pashua.OptionList
   default-language: Haskell2010 
   build-depends: base >= 4.7 && < 5
                , text

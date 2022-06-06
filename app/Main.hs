@@ -22,7 +22,7 @@ data SomeID =
   TxtField | TxtBox | Img
   deriving (Show, Eq)
 
-data Food = Sushi | Tofu deriving (Show, Eq)
+data Food = Sushi | Tofu deriving (Show, Eq, Enum)
 
 food :: Reader Food
 food str =
@@ -41,8 +41,8 @@ parseFood key result = fst <$> parse (P food <* P eos) key result
 main :: IO ()
 main = do
   let
-    l :: ListWithDefault
-    l = fromJust (mkListWithDefault (Just Sushi) (Sushi NL.:| [Tofu]))
+    l :: OptionList
+    l = fromJust (mkOptionListFromEnum (Just Sushi) Sushi)
     imageWidth = fromJust $ mkPixel 250
     b :: [Widget SomeID]
     b = [ radioButton Radio l
