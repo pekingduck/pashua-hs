@@ -14,31 +14,14 @@ import           Data.Text                 as T
 import           Graphics.UI.Pashua
 import           Graphics.UI.Pashua.Parser
 
---import qualified Turtle             as TT
-
 data SomeID =
   Passwd | Txt | Pop | OkButton | OtherButton |
   Combo | Radio | Browser | Save | Cal |
   TxtField | TxtBox | Img
   deriving (Show, Eq)
 
-data Food = Sushi | Tofu deriving (Show, Eq, Enum)
+data Food = Sushi | Tofu deriving (Show, Eq, Enum, Read)
 
-food :: Reader Food
-food str =
-  case matchText "Sushi" str <> matchText "Tofu" str <> Left "" of
-    Right ("Sushi", b) -> Right (Sushi, b)
-    Right ("Tofu", b)  -> Right (Tofu, b)
-    _                  -> Left "Invalid Food"
-  -- if | T.isPrefixOf "Sushi" s -> go Sushi "Sushi" s
-  --    | T.isPrefixOf "Tofu" s  -> go Tofu "Tofu" s
-  --    | otherwise              -> Left "Invalid food"
-  -- where
-  --   go a pre s = Right (a, T.drop (T.length pre) s)
-
-parseFood key result = fst <$> parse (P food <* P eos) key result
-
-main :: IO ()
 main = do
   let
     l :: OptionList
@@ -73,6 +56,7 @@ main = do
                       , transparency = Just 0.9
                       }
     f = Form (Just w) b
+    parseFood x y = mkEnumParser ("Invalid food: " <>) x y :: Either (Err SomeID) Food
   result <- runPashua f
   print result
   print $ parseFood Radio result

@@ -19,6 +19,9 @@ module Graphics.UI.Pashua.Parser
   , parseBool
   , parseInt
   , parse
+  , mkReader
+  , mkEnumReader
+  , mkEnumParser
   ) where
 
 import           Data.Bifunctor          (first)
@@ -29,12 +32,15 @@ import           Data.Text
     , head
     , isPrefixOf
     , length
+    , pack
     , tail
+    , unpack
     )
 import           Data.Text.Internal.Read as IR
 import           Data.Text.Read          as R
 import           Graphics.UI.Pashua      (Result (..))
 import           Prelude                 hiding (drop, head, length, tail)
+import           Text.Read               (readEither)
 
 data Err a = FormCancelled | ParseError a String deriving Show
 
@@ -86,3 +92,25 @@ parseInt :: Eq a => a -> Result a -> Either (Err a) Int
 parseInt key aList =
   let p = IR.P R.decimal <* IR.P eos
   in fromIntegral . fst <$> parse p key aList
+
+mkReader :: (Read a, Show a) => [a] -> (String -> String) -> Reader a
+mkReader as printError = \s -> do
+  let errMsg = printError $ unpack s
+      toText = pack . show
+  (x, s') <- foldr (<>) (Left errMsg) (fmap (\k -> matchText (toText k) s) as)
+  x' <- readEither $ unpack x
+  pure (x', s')
+
+mkEnumReader
+  :: (Read a, Show a, Enum a)
+  => (String -> String)
+  -> Reader a
+mkEnumReader = mkReader $ enumFrom $ toEnum 0
+
+mkEnumParser
+  :: (Eq a, Read b, Show b, Enum b)
+  => (String -> String)
+  -> a -> Result a -> Either (Err a) b
+mkEnumParser printError key aList =
+  let p = IR.P (mkEnumReader printError) <* IR.P eos
+  in fst <$> parse p key aList
