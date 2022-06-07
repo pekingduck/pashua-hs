@@ -17,11 +17,12 @@ module Graphics.UI.Pashua
   , DateChoice(..)
   , DateStyle(..)
   , ImageDimensions(..)
-  , Form(..)
+  , Form
   , RelX
   , RelY
-  , Result(..)
+  , Result
   , OL.OptionList(OL.default_, OL.items)
+  , mkForm
   , OL.mkOptionList
   , OL.mkOptionListFromEnum
   , button
@@ -50,8 +51,9 @@ module Graphics.UI.Pashua
   ) where
 
 import           Control.Monad                 (forM_)
+import           Data.Char                     (isAlphaNum)
 import           Data.Functor                  ((<&>))
-import           Data.List                     (find)
+import           Data.List                     (find, nub)
 import qualified Data.List.NonEmpty            as NL
 import           Data.Text
     ( Text
@@ -160,6 +162,7 @@ data Window = Window { appearance    :: Maybe WindowAppearance
                      , transparency  :: Maybe Double
                      , xy            :: Maybe Coord
                      }
+  deriving Show
 
 -- id_ is needed only for keying into the final results returned by pashua
 -- the real ids being passed to pashua are auto-generated ("widget0", "widget1"..)
@@ -327,7 +330,7 @@ data Widget a =
   }
   deriving (Functor, Show) -- Functor because we need Widget Text for serialization
 
-data Form a = Form (Maybe Window) [Widget a]
+data Form a = Form (Maybe Window) [Widget a] deriving Show
 
 coordFmt :: ID -> (Attribute, Attribute) -> Maybe Coord -> [Text]
 coordFmt wid (x, y)=
@@ -792,6 +795,15 @@ textBox id_ =
   , relX = Nothing
   , relY = Nothing
   }
+
+-- Check if show widget ids contain only alphanums
+mkForm :: (Eq a, Show a) => Maybe Window -> [Widget a] -> Maybe (Form a)
+mkForm _ [] = Nothing
+mkForm win ws =
+  let ids = fmap (show . id_) ws
+      uniq = nub ids
+      b = and $ fmap (all isAlphaNum) ids
+  in if b && ids == uniq then Just (Form win ws) else Nothing
 
 runForm :: Form a -> [Text]
 runForm = mconcat . serialize
