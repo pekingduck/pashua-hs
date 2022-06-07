@@ -26,7 +26,8 @@ main = do
     f = mkForm ( Just w) $
         [ radioButton Radio (mkOptionListFromEnum (Nothing :: Maybe Food))
         , (textField TxtField) { label_ = Just "Enter a number" } ]
-    parseFood x y = mkEnumParser ("Invalid food: " <>) x y :: Either (Err SomeID) Food
+    parseFood :: SomeID -> Result SomeID -> Either (Err SomeID) Food
+    parseFood x y = mkEnumParser ("Invalid food: " <>) x y
   case f of
     Just f' -> do
       result <- runPashua f'
