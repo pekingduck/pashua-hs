@@ -48,10 +48,11 @@ module Graphics.UI.Pashua
   , parseResult
   , withPashua
   , runPashua
+  , simpleMessage
+  , unreplaceNL
   ) where
 
-import           Control.Monad                 (forM_)
-import           Data.Char                     (isAlphaNum)
+import           Control.Monad                 (forM_, void)
 import           Data.Functor                  ((<&>))
 import           Data.List                     (find, nub)
 import qualified Data.List.NonEmpty            as NL
@@ -60,7 +61,6 @@ import           Data.Text
     , breakOn
     , lines
     , null
-    , pack
     , replace
     , tail
     , unwords
@@ -796,14 +796,14 @@ textBox id_ =
   , relY = Nothing
   }
 
--- Check if show widget ids contain only alphanums
+-- Ensure all provided Widget IDs are unique
 mkForm :: (Eq a, Show a) => Maybe Window -> [Widget a] -> Maybe (Form a)
 mkForm _ [] = Nothing
 mkForm win ws =
   let ids = fmap (show . id_) ws
-      uniq = nub ids
-      b = and $ fmap (all isAlphaNum) ids
-  in if b && ids == uniq then Just (Form win ws) else Nothing
+      uniqIds = nub ids
+--      b = and $ fmap (all isAlphaNum) ids
+  in if ids == uniqIds then Just (Form win ws) else Nothing
 
 runForm :: Form a -> [Text]
 runForm = mconcat . serialize
@@ -842,6 +842,12 @@ withPashua pashua f = do
 
 runPashua :: Eq a => Form a -> IO (Result a)
 runPashua = withPashua pashuaExec
+
+simpleMessage :: Text -> Text -> IO ()
+simpleMessage title body =
+  let w = window { title = Just title }
+      f = Form (Just w) [ text_ () body ]
+  in void $ runPashua f
 
 boolToInt :: Bool -> Int
 boolToInt True  = 1

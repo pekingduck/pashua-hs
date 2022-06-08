@@ -34,4 +34,5 @@ main = do
       print result
       print $ parseFood Radio result
       print $ parseInt TxtField result
+      simpleMessage "Title" "A text box"
     _ -> putStrLn "Unable to make Form"
