@@ -330,7 +330,7 @@ data Widget a =
   }
   deriving (Functor, Show) -- Functor because we need Widget Text for serialization
 
-data Form a = Form (Maybe Window) [Widget a] deriving Show
+data Form a = Form (Maybe Window) (NL.NonEmpty (Widget a)) deriving Show
 
 coordFmt :: ID -> (Attribute, Attribute) -> Maybe Coord -> [Text]
 coordFmt wid (x, y)=
@@ -575,7 +575,8 @@ instance Serializable (Form a) where
   serialize (Form w' widgets) =
     maybe [] serialize w' <> mconcat (fmap serialize widgets')
     where
-      widgets' = zip [0..] widgets <&> \(i, w) -> fmapWidget (mkWidgetID i) w
+      widgets' = zip [0 ..] (NL.toList widgets) <&>
+                 \(i, w) -> fmapWidget (mkWidgetID i) w
 
 window :: Window
 window =
@@ -797,10 +798,11 @@ textBox id_ =
   }
 
 -- Ensure all provided Widget IDs are unique
-mkForm :: (Eq a, Show a) => Maybe Window -> [Widget a] -> Maybe (Form a)
-mkForm _ [] = Nothing
+mkForm
+  :: (Eq a, Show a)
+  => Maybe Window -> NL.NonEmpty (Widget a) -> Maybe (Form a)
 mkForm win ws =
-  let ids = fmap (show . id_) ws
+  let ids = fmap (show . id_) (NL.toList ws)
       uniqIds = nub ids
 --      b = and $ fmap (all isAlphaNum) ids
   in if ids == uniqIds then Just (Form win ws) else Nothing
@@ -811,7 +813,8 @@ runForm = mconcat . serialize
 parseResult :: Eq a => Form a -> [Text] -> Result a
 parseResult (Form _ widgets) inputLines =
   -- lookupTable [ ("widget0", id0), ("widget1", id1), ...]
-  let lookupTable = zip [0..] widgets <&> \(i, w) -> (mkWidgetID i id_, id_ w)
+  let lookupTable = zip [0..] (NL.toList widgets)
+                    <&> \(i, w) -> (mkWidgetID i id_, id_ w)
   in inputLines <&> \line ->
     let (widgetID', value) = split line
     in
@@ -829,7 +832,7 @@ pashuaExec :: String
 pashuaExec = "/Applications/Pashua.app/Contents/MacOS/Pashua"
 
 withPashua :: Eq a => String -> Form a -> IO (Result a)
-withPashua _ (Form _ []) = return []
+-- withPashua _ (Form _ []) = return []
 withPashua pashua f = do
   createProcess (proc pashua ["-"])
     { std_in = CreatePipe, std_out = CreatePipe } >>=
@@ -846,7 +849,7 @@ runPashua = withPashua pashuaExec
 simpleMessage :: Text -> Text -> IO ()
 simpleMessage title body =
   let w = window { title = Just title }
-      f = Form (Just w) [ text_ () body ]
+      f = Form (Just w) $ text_ () body NL.:| []
   in void $ runPashua f
 
 boolToInt :: Bool -> Int
