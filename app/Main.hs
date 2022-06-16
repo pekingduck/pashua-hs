@@ -1,10 +1,16 @@
 {-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiWayIf            #-}
 {-# LANGUAGE OverloadedStrings     #-}
 
 module Main where
+
+import           GHC.Generics
+import           TextShow
+import           TextShow.Generic
 
 import           Control.Monad             (forM_)
 import           Data.Functor              ((<&>))
@@ -14,9 +20,11 @@ import           Data.Text                 as T
 import           Graphics.UI.Pashua
 import           Graphics.UI.Pashua.Parser
 
-data SomeID = Radio | TxtField deriving (Show, Eq)
+data SomeID = Radio | TxtField
+  deriving (Eq, Generic) deriving TextShow via FromGeneric SomeID
 
-data Food = Sushi | Tofu deriving (Show, Eq, Enum, Read)
+data Food = Sushi | Tofu
+  deriving (Eq, Enum, Read, Generic) deriving TextShow via FromGeneric Food
 
 main = do
   let
@@ -31,8 +39,8 @@ main = do
   case f of
     Just f' -> do
       result <- runPashua f'
-      print result
-      print $ parseFood Radio result
-      print $ parseInt TxtField result
+      printT result
+      printT $ parseFood Radio result
+      printT $ parseInt TxtField result
       simpleMessage "Title" "A text box"
     _ -> putStrLn "Unable to make Form"

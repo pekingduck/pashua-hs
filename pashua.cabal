@@ -23,7 +23,8 @@ library
                , text
                , formatting
                , process
-                             
+               , text-show
+                 
 executable pashuatest
   hs-source-dirs:      app
   main-is:             Main.hs
@@ -33,3 +34,4 @@ executable pashuatest
                      , formatting
                      , process
                      , pashua
+                     , text-show

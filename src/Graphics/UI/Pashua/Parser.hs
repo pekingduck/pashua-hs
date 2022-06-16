@@ -1,5 +1,9 @@
 {-# LANGUAGE BlockArguments    #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE DerivingVia       #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Avoid lambda using `infix`" #-}
 
 module Graphics.UI.Pashua.Parser
   ( Err(..)
@@ -38,11 +42,15 @@ import           Data.Text
     )
 import           Data.Text.Internal.Read as IR
 import           Data.Text.Read          as R
+import           GHC.Generics
 import           Graphics.UI.Pashua      (Result (..))
 import           Prelude                 hiding (drop, head, length, tail)
 import           Text.Read               (readEither)
+import           TextShow
+import           TextShow.Generic
 
-data Err a = FormCancelled | ParseError a String deriving Show
+data Err a = FormCancelled | ParseError a String
+  deriving (Show, Generic) deriving TextShow via FromGeneric (Err a)
 
 type Parser a = IR.IParser Text a
 
@@ -93,22 +101,22 @@ parseInt key aList =
   let p = IR.P R.decimal <* IR.P eos
   in fromIntegral . fst <$> parse p key aList
 
-mkReader :: (Read a, Show a) => [a] -> (String -> String) -> Reader a
+mkReader :: (Read a, TextShow a) => [a] -> (String -> String) -> Reader a
 mkReader as printError = \s -> do
   let errMsg = printError $ unpack s
-      toText = pack . show
-  (x, s') <- foldr (<>) (Left errMsg) (fmap (\k -> matchText (toText k) s) as)
+      --toText = pack . show
+  (x, s') <- foldr (<>) (Left errMsg) (fmap (\k -> showt k `matchText` s) as)
   x' <- readEither $ unpack x
   pure (x', s')
 
 mkEnumReader
-  :: (Read a, Show a, Enum a)
+  :: (Read a, TextShow a, Enum a)
   => (String -> String)
   -> Reader a
 mkEnumReader = mkReader $ enumFrom $ toEnum 0
 
 mkEnumParser
-  :: (Eq a, Read b, Show b, Enum b)
+  :: (Eq a, Read b, TextShow b, Enum b)
   => (String -> String)
   -> a -> Result a -> Either (Err a) b
 mkEnumParser printError key aList =

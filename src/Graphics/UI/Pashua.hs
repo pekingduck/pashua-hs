@@ -1,5 +1,7 @@
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -68,6 +70,7 @@ import           Data.Text
 import qualified Data.Text.IO                  as TIO
 import           Formatting                    (sformat, (%))
 import           Formatting.Formatters         (int, stext, string)
+import           GHC.Generics
 import           Graphics.UI.Pashua.OptionList as OL
 import           Prelude                       hiding
     ( lines
@@ -82,6 +85,8 @@ import           System.Process
     , createProcess
     , proc
     )
+import           TextShow
+import           TextShow.Generic
 
 
 type ID = Text
@@ -94,6 +99,9 @@ type RelX = Int
 
 newtype Pixel = Pixel Int
 
+instance TextShow Pixel where
+  showb (Pixel i) = showb i
+
 instance Show Pixel where
   show (Pixel i) = show i
 
@@ -102,6 +110,9 @@ newtype RelY = RelY Int
 instance Show RelY where
   show (RelY i) = show i
 
+instance TextShow RelY where
+  showb (RelY i) = showb i
+
 data FontSize = Regular | Small | Mini
 
 instance Show FontSize where
@@ -109,15 +120,26 @@ instance Show FontSize where
   show Small   = "small"
   show Mini    = "mini"
 
+instance TextShow FontSize where
+  showb Regular = fromText "regular"
+  showb Small   = fromText "small"
+  showb Mini    = fromText "mini"
+
 data FontType = Fixed
 
 instance Show FontType where
   show Fixed = "fixed"
 
+instance TextShow FontType where
+  showb Fixed = fromText "fixed"
+
 data WindowAppearance = Metal
 
 instance Show WindowAppearance where
   show Metal = "metal"
+
+instance TextShow WindowAppearance where
+  showb Metal = fromText "metal"
 
 data Completion = NoCompletion | CaseSensitive | CaseInsensitive
 
@@ -126,6 +148,11 @@ instance Show Completion where
   show CaseSensitive   = "1"
   show CaseInsensitive = "2"
 
+instance TextShow Completion where
+  showb NoCompletion    = fromText "0"
+  showb CaseSensitive   = fromText "1"
+  showb CaseInsensitive = fromText "2"
+
 data FileType = Directory | Extensions (NL.NonEmpty Text) deriving Show
 
 data DateStyle = Textual | Graphical
@@ -133,6 +160,10 @@ data DateStyle = Textual | Graphical
 instance Show DateStyle where
   show Textual   = "1"
   show Graphical = "0"
+
+instance TextShow DateStyle where
+  showb Textual   = fromText "1"
+  showb Graphical = fromText "0"
 
 data DateChoice = DateOnly | TimeOnly | DateTime deriving Show
 
@@ -344,11 +375,11 @@ textFmt wid attr = maybe [] $ \a ->
                      [ sformat (stext % "." % stext % "=" % stext)
                        wid attr a ]
 
-showFmt :: Show a => ID -> Attribute -> Maybe a -> [Text]
+showFmt :: TextShow a => ID -> Attribute -> Maybe a -> [Text]
 showFmt wid attr =
   maybe [] $ \a ->
-               [ sformat (stext % "." % stext % "=" % string)
-                 wid attr (show a) ]
+               [ sformat (stext % "." % stext % "=" % stext)
+                 wid attr (showt a) ]
 
 instance Serializable Window where
   serialize Window {..} =
@@ -799,10 +830,10 @@ textBox id_ =
 
 -- Ensure all provided Widget IDs are unique
 mkForm
-  :: (Eq a, Show a)
+  :: (Eq a, TextShow a)
   => Maybe Window -> NL.NonEmpty (Widget a) -> Maybe (Form a)
 mkForm win ws =
-  let ids = fmap (show . id_) (NL.toList ws)
+  let ids = fmap (showt . id_) (NL.toList ws)
       uniqIds = nub ids
 --      b = and $ fmap (all isAlphaNum) ids
   in if ids == uniqIds then Just (Form win ws) else Nothing
