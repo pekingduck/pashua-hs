@@ -28,8 +28,8 @@ module Graphics.UI.Pashua.Parser
   , mkEnumParser
   ) where
 
-import           Data.Bifunctor          (first)
-import           Data.List               (find, lookup)
+import           Data.Bifunctor             (first)
+import           Data.List                  (find, lookup)
 import           Data.Text
     ( Text
     , drop
@@ -40,17 +40,22 @@ import           Data.Text
     , tail
     , unpack
     )
-import           Data.Text.Internal.Read as IR
-import           Data.Text.Read          as R
+import           Data.Text.Internal.Builder (fromText)
+import           Data.Text.Internal.Read    as IR
+import           Data.Text.Read             as R
 import           GHC.Generics
-import           Graphics.UI.Pashua      (Result (..))
-import           Prelude                 hiding (drop, head, length, tail)
-import           Text.Read               (readEither)
+import           Graphics.UI.Pashua         (Result (..))
+import           Prelude                    hiding (drop, head, length, tail)
+import           Text.Read                  (readEither)
 import           TextShow
 import           TextShow.Generic
 
 data Err a = FormCancelled | ParseError a String
-  deriving (Show, Generic) deriving TextShow via FromGeneric (Err a)
+  deriving (Show, Generic) -- deriving TextShow via FromGeneric (Err a)
+
+instance TextShow a => TextShow (Err a) where
+  showb FormCancelled    = fromText "Form cancelled"
+  showb (ParseError w s) = fromText $ showt w <> " - " <> pack s
 
 type Parser a = IR.IParser Text a
 
